@@ -1,4 +1,4 @@
-use std::{array, iter};
+use std::iter;
 
 use wgpu::util::DeviceExt;
 use winit::{

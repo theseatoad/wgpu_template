@@ -29,6 +29,8 @@ fn vs_main(
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     var position : vec2<f32> = in.position;
-    position.x = sin(f32(tick.tick) / 60.0);
-    return vec4<f32>(position, 0.5, 1.0);
+    var circle : f32 = length(position);
+    circle = abs(tan(circle * (f32(tick.tick) / 60.0)));
+    var col  : vec3<f32>= vec3(circle,circle,circle);
+    return vec4<f32>(col, 1.0);
 }
