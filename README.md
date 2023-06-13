@@ -1,5 +1,4 @@
-# coolhats
-Cool hats!
+# Template for native and web builds of wgpu shaders
 
 # Prelude
 
