@@ -1657,7 +1657,7 @@ async function __wbg_init(input) {
     if (wasm !== undefined) return wasm;
 
     if (typeof input === 'undefined') {
-        input = new URL('wgpu-template-b96928ebcdd6be76_bg.wasm', import.meta.url);
+        input = new URL('wgpu-template-5aa2ae40c131a629_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 
