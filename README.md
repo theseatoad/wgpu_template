@@ -25,3 +25,7 @@ Install just
 
 ### Web
 `just web`
+
+
+## Credits:
+Cool shader: https://www.youtube.com/watch?v=f4s1h2YETNY

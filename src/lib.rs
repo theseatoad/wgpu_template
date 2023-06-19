@@ -1,5 +1,7 @@
 use std::iter;
 
+use env_logger::Env;
+use log::{debug, info, warn};
 use wgpu::util::DeviceExt;
 use winit::{
     dpi::PhysicalSize,
@@ -50,6 +52,25 @@ impl TickUniform {
 
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+struct ResolutionUniform {
+    resolution: [f32; 4],
+}
+
+impl ResolutionUniform {
+    fn new() -> Self {
+        Self {
+            resolution: [800.0; 4],
+        }
+    }
+
+    fn update(&mut self, x: f32, y: f32) {
+        self.resolution[0] = x;
+        self.resolution[1] = y;
+    }
+}
+
+#[repr(C)]
+#[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
     position: [f32; 3],
 }
@@ -89,6 +110,9 @@ struct State {
     tick_uniform: TickUniform,
     tick_buffer: wgpu::Buffer,
     tick_bind_group: wgpu::BindGroup,
+    resolution_uniform: ResolutionUniform,
+    resolution_buffer: wgpu::Buffer,
+    resolution_bind_group: wgpu::BindGroup,
 }
 
 impl State {
@@ -179,6 +203,37 @@ impl State {
             label: Some("tick_bind_group"),
         });
 
+        // === resolution ==
+        let resolution_uniform = ResolutionUniform::new();
+        let resolution_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("Resolution Buffer"),
+            contents: bytemuck::cast_slice(&[resolution_uniform]),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
+        let resolution_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+                label: Some("Resolution_bind_group_layout"),
+            });
+
+        let resolution_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &tick_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: resolution_buffer.as_entire_binding(),
+            }],
+            label: Some("resolution_bind_group"),
+        });
+
         let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Vertex Buffer"),
             contents: bytemuck::cast_slice(VERTICES),
@@ -194,7 +249,7 @@ impl State {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&tick_bind_group_layout],
+                bind_group_layouts: &[&tick_bind_group_layout, &resolution_bind_group_layout],
                 push_constant_ranges: &[],
             });
 
@@ -256,6 +311,9 @@ impl State {
             tick_uniform,
             tick_buffer,
             tick_bind_group,
+            resolution_uniform,
+            resolution_buffer,
+            resolution_bind_group,
         }
     }
 
@@ -269,7 +327,18 @@ impl State {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
+            self.resolution_uniform
+                .update(new_size.width as f32, new_size.height as f32);
+            self.queue.write_buffer(
+                &self.resolution_buffer,
+                0,
+                bytemuck::cast_slice(&[self.resolution_uniform]),
+            );
         }
+        debug!(
+            "New size: {:?}{:?}",
+            self.resolution_uniform.resolution[0], self.resolution_uniform.resolution[1]
+        )
     }
 
     #[allow(unused_variables)]
@@ -320,6 +389,7 @@ impl State {
 
             render_pass.set_pipeline(&self.render_pipeline);
             render_pass.set_bind_group(0, &self.tick_bind_group, &[]);
+            render_pass.set_bind_group(1, &self.resolution_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indices, 0, 0..1);
@@ -337,9 +407,9 @@ pub async fn run() {
     cfg_if::cfg_if! {
         if #[cfg(target_arch = "wasm32")] {
             std::panic::set_hook(Box::new(console_error_panic_hook::hook));
-            console_log::init_with_level(log::Level::Warn).expect("Could't initialize logger");
+            console_log::init_with_level(log::Level::Info).expect("Could't initialize logger");
         } else {
-            env_logger::init();
+            env_logger::Builder::from_env(Env::default().default_filter_or("wgpu_template")).init();
         }
     }
 
@@ -355,7 +425,6 @@ pub async fn run() {
         let canvas = create_canvas(&window);
     }
 
-    // State::new uses async code, so we're going to wait for it to finish
     let mut state = State::new(window).await;
 
     event_loop.run(move |event, _, control_flow| {
@@ -378,7 +447,6 @@ pub async fn run() {
                         } => *control_flow = ControlFlow::Exit,
                         WindowEvent::Resized(physical_size) => {
                             state.resize(*physical_size);
-                            log::warn!("Resizing");
                         }
                         WindowEvent::ScaleFactorChanged { new_inner_size, .. } => {
                             // new_inner_size is &mut so w have to dereference it twice
@@ -419,9 +487,9 @@ pub fn create_canvas(window: &Window) -> HtmlCanvasElement {
     let document = web_window.document().unwrap();
     let body = document.body().unwrap();
     let mut canvas = window.canvas();
-    canvas
-        .style()
-        .set_css_text("display: block; background-color: crimson; margin: auto; width: 100%;");
+    canvas.style().set_css_text(
+        "display: block; background-color: crimson; margin: auto; width: 50%; heightL 50%;aspect-ratio: 1/1;left = 0; top = 0;",
+    );
     body.append_child(&canvas).unwrap();
     canvas
 }
